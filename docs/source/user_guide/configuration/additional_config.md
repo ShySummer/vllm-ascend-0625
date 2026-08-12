@@ -162,6 +162,20 @@ The legacy top-level `enable_balance_scheduling`, `recompute_scheduler_enable`, 
 | `profiling_chunk_config` | dict | `{}` | Configuration options for dynamic chunked pipeline parallel. See [Dynamic Chunked Pipeline Parallel](../feature_guide/dynamic_chunk_pipeline_parallel.md) for details. |
 | `short_request_first_config` | dict | `{}` | Configuration options for ShortRequestFirst prefill scheduling on FCFS synchronous or asynchronous, PD-prefill (P), or PD-mixed nodes. |
 | `batch_job_sched_config` | dict | `{}` | Configuration options for the batch-job-aware scheduler. See [Batch-Job-Aware Scheduler](../feature_guide/batch_job_aware_scheduler.md) for details. |
+| `prefill_admission_config` | dict | `{}` | Token-level Prefill admission throttling for explicitly selected low-bandwidth PP, PD-mixed deployments. Disabled by default. |
+
+**scheduler_config.prefill_admission_config**
+
+This policy keeps vLLM's unified token-level scheduler and Running-request priority. It does not add global Prefill/Decode phases: a Prefill burst receives a bounded token budget on each scheduler step, while the Scheduler output remains the per-request `num_scheduled_tokens` mapping. The first burst starts immediately. After its Prefill cohort drains, `prefill_burst_cooldown_ms` enforces a wall-clock cooldown before the next burst unless the eligible Decode batch falls below `decode_low_watermark`. During cooldown, only eligible Decode tokens are admitted while the watermark is met; a lower Decode batch starts a mixed Prefill burst containing the Prefills pending at that point, and that cohort continues until drained.
+
+The feature is not enabled through product-name detection. Operators should enable it only for low-bandwidth PP deployments. Startup requires `pipeline-parallel-size > 1`, chunked Prefill, and a PD-mixed node (`kv_role="kv_both"` or no KV transfer configuration). The same Scheduler logic is used by Model Runner V1 and V2.
+
+| Name | Type | Default | Description |
+| ---- | ---- | ------- | ----------- |
+| `enabled` | bool | `False` | Enable low-bandwidth PP Prefill admission throttling. |
+| `decode_low_watermark` | int | `0` | Eligible Decode batch size below which cooldown may be bypassed for a mixed Prefill burst. `0` derives the watermark from `pipeline_parallel_size`. |
+| `prefill_burst_cooldown_ms` | float | `1000.0` | Minimum wall-clock cooldown between the observed end of one Prefill burst and the next burst. First burst starts immediately. Must be positive. |
+| `prefill_tokens_per_pp_bubble` | int | `512` | Small-grained Prefill token budget contributed by each estimated unused PP slot. |
 
 **scheduler_config.profiling_chunk_config**
 
